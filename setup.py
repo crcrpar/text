@@ -45,16 +45,41 @@ def _export_version(version, sha):
         fileobj.write("git_version = {}\n".format(repr(sha)))
 
 
-def _init_submodule():
-    print(" --- Initializing submodules")
-    try:
-        subprocess.check_call(["git", "submodule", "init"])
-        subprocess.check_call(["git", "submodule", "update"])
-    except Exception:
-        print(" --- Submodule initalization failed")
-        print("Please run:\n\tgit submodule update --init --recursive")
-        sys.exit(1)
-    print(" --- Initialized submodule")
+def _get_submodule_folders():
+    git_modules_path = ROOT_DIR / ".gitmodules"
+    if not os.path.exists(git_modules_path):
+        return []
+    with open(git_modules_path) as f:
+        return [
+            os.path.join(ROOT_DIR, line.split("=", 1)[1].strip())
+            for line in f.readlines()
+            if line.strip().startswith("path")
+        ]
+
+
+def _maybe_init_submodule():
+    def check_for_files(folder, files):
+        if not any(os.path.exists(os.path.join(folder, f)) for f in files):
+            print("Could not find any of {} in {}".format(", ".join(files), folder))
+            print("Did you run 'git submodule update --init --recursive'?")
+            sys.exit(1)
+
+    def not_exist_or_empty(folder):
+        return not os.path.exists(folder) or (os.path.isdir(folder) and len(os.listdir(folder)) == 0)
+
+    folders = _get_submodule_folders()
+    if all(not_exist_or_empty(folder) for folder in folders):
+        print(" --- Initializing submodules")
+        try:
+            subprocess.check_call(["git", "submodule", "init"])
+            subprocess.check_call(["git", "submodule", "update"])
+        except Exception:
+            print(" --- Submodule initalization failed")
+            print("Please run:\n\tgit submodule update --init --recursive")
+            sys.exit(1)
+        print(" --- Initialized submodule")
+    for folder in folders:
+        check_for_files(folder, ("CMakeLists.txt"))
 
 
 VERSION, SHA = _get_version()
@@ -93,7 +118,7 @@ class clean(distutils.command.clean.clean):
                 shutil.rmtree(str(path), ignore_errors=True)
 
 
-_init_submodule()
+_maybe_init_submodule()
 setup_info = dict(
     # Metadata
     name="torchtext",
